@@ -22,38 +22,68 @@ namespace raytracer
         Point3D f;
         Point3D cam_normal;
 
-        const float EPS = 0.001f;
+        const float EPS = 0.0001f;
         public Form1()
         {
             InitializeComponent();
             pictureBox1.Image = new Bitmap(pictureBox1.Width, pictureBox1.Height);
-            build_scene();
-            foreach (var f in scene)
-                f.CalculateNormals();
-           
-            run();
+ 
+            
         }
 
         public void build_scene() {
 
+            // room
             var room = Figure.get_Hexahedron(10);
+            room.mat = new Material(new Point3D(1, 0, 0), 0.05f, 0, 1, 0.3f, 0.4f, 0.5f, 40);
+            scene.Add(room);
+            // camera
             var cam = new Figure(room);
-           // cam.scale_axis(2, 2, 2);
             buildColorMap(cam.sides[0].get_point(0), cam.sides[0].get_point(1), cam.sides[0].get_point(3), cam.sides[0].get_point(2), pictureBox1.Width, pictureBox1.Height);
             f = CalculateFocus(5, cam.sides[0].get_point(0), cam.sides[0].get_point(1), cam.sides[0].get_point(3), cam.sides[0].get_point(2));
-            room.mat = new Material(new Point3D(1, 0, 0), 0.4f, 0, 0,0.2f,0.4f,0.5f,1);
-            Light l = new Light(new Point3D(0, 0, 4.5f));
+            // 
+            
+            // lights
+            Light l = new Light(new Point3D(-3, -3, 4.5f));
             l.clr = new Point3D(new Point3D(1f, 1f, 1f));
             l.amb = new Point3D(new Point3D(0.5f, 0.5f, 0.5f));
-            var obj = new Sphere(new Point3D(0, 0, -3), 3f);
-            //var obj = Figure.get_Icosahedron(2);
-            obj.offset(0, 0, -2);
-            obj.set_pen(new Pen(Color.Silver));
-            obj.mat = new Material(new Point3D(0, 0, 0),0,1f,1.5f,0.0f,0,1f,4);
-
-            scene.Add(room);
-            scene.Add(obj);
             lights.Add(l);
+
+            l = new Light(new Point3D(3, 3, 4.5f));
+            l.clr = new Point3D(new Point3D(0.5f, 0.5f, 0.5f));
+            l.amb = new Point3D(new Point3D(0.1f, 0.1f, 0.1f));
+            lights.Add(l);
+
+            // silver relftive sphrere
+            var obj = new Sphere(new Point3D(3, 0, -3), 2f);
+            obj.set_pen(new Pen(Color.Silver));
+            obj.mat = new Material(new Point3D(0, 0, 0), 0.6f, 0f, 1f, 0.39225f, 0.50754f, 0.508273f, 50);
+            scene.Add(obj);
+            
+            // mate icosahedron
+            var obj2 = Figure.get_Icosahedron(2.2f);
+            obj2.set_pen(new Pen(Color.Aquamarine));
+            obj2.mat = new Material(new Point3D(0, 0, 0), 0.001f, 0, 1, 0.4f, 0.6f, 1f, 30);
+            obj2.offset(-3,0,-3);
+            scene.Add(obj2);
+
+            // bit reflictive random 
+            obj2 = Figure.get_Hexahedron(2f);
+            obj2.set_rand_color();
+            obj2.mat = new Material(new Point3D(0, 0, 0), 0.3f, 0, 1, 0.2f, 0.3f, 1f, 100);
+            obj2.offset(3, 0, 3);
+            scene.Add(obj2);
+
+
+
+            // transparent sphrere
+            obj = new Sphere(new Point3D(0, 3, -3.9f), 1f);
+            obj.set_pen(new Pen(Color.Gray));
+            obj.mat = new Material(new Point3D(0, 0, 0), 0.003f, 0.95f, 1.5f, 0.39225f, 0.50754f, 0.508273f, 50);
+            scene.Add(obj);
+
+
+
 
         }
 
@@ -65,23 +95,26 @@ namespace raytracer
                     Ray r = new Ray(f, points[i, j]);
                     r.start = points[i, j];
                    
-                   var c = RayTrace(r, 10);
+                   var c = RayTrace(r, 10,1,1);
 
                     if (Math.Max(Math.Max(c.x, c.y), c.z) > 1)
                         c = Point3D.norm(c);
                         
                     colormap[i, j] = Color.FromArgb((int)(255 * c.x), (int)(255 * c.y), (int)(255 * c.z));
                     (pictureBox1.Image as Bitmap).SetPixel(i, j, colormap[i, j]);
+                    Text = String.Format(" {0:0.00}%", ((double)(i * pictureBox1.Width + j) * 100 / (pictureBox1.Width * pictureBox1.Height)));
+
+
                 }
                 pictureBox1.Invalidate();
             }
         }
 
 
-        Point3D RayTrace(Ray r, int rec, float env = 1) {
+        Point3D RayTrace(Ray r, int rec, float env = 1, float impact = 1) {
             bool BackToAir = false;
             Point3D clr = new Point3D(0, 0, 0);
-            if (rec <= 0)
+            if (rec <= 0 || impact < EPS)
                 return clr;
             Hit h = GenerateHit(r);
             if (!h.succes)
@@ -107,7 +140,7 @@ namespace raytracer
             {
 
                 Ray reflRay = h.Reflect(hit_pos);
-                clr += h.mat.reflection_coef * RayTrace(reflRay,rec-1,env);
+                clr += h.mat.reflection_coef * RayTrace(reflRay,rec-1,env,impact* h.mat.reflection_coef);
 
             }
 
@@ -118,7 +151,7 @@ namespace raytracer
 
                 Ray refrRay = h.Refract(hit_pos,BackToAir ? env/1 : env/h.mat.env_coef );
                 if(refrRay != null)
-                    clr += h.mat.refraction_coef * RayTrace(refrRay,rec-1, h.mat.env_coef);
+                    clr += h.mat.refraction_coef * RayTrace(refrRay,rec-1,impact * h.mat.reflection_coef);
 
             }
 
@@ -207,6 +240,19 @@ namespace raytracer
             center += norm * dist;
             return center;
 
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void Form1_Shown(object sender, EventArgs e)
+        {
+            build_scene();
+            foreach (var f in scene)
+                f.CalculateNormals();
+            run();
         }
     }
 }
